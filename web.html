@@ -6,122 +6,120 @@
     <title>Обустройство комнаты отеля</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
-        body { margin:0; padding:0; background:#111; color:white; font-family:sans-serif; overflow:hidden; touch-action:none; }
-        #room { 
-            position: relative; width:100vw; height:100vh; 
-            background: url('https://s.fotora.ru/80033dcbc2bd9f18.png') center/cover no-repeat; 
-            overflow: hidden; 
+        body {
+            margin: 0;
+            padding: 0;
+            background: #111;
+            color: white;
+            font-family: sans-serif;
+            overflow: hidden;
+            touch-action: none;
         }
-        .item { 
-            position: absolute; width:80px; height:auto; max-height:120px; object-fit:contain; 
-            cursor: move; user-select:none; z-index:10; transition: transform 0.1s;
+        #room {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            background: url('https://via.placeholder.com/800x600/333/fff?text=Hotel+Room+PNG') center/cover no-repeat;
+            overflow: hidden;
         }
-        .item:active { transform: scale(1.12); z-index: 20; }
-        
-        #inventory { 
-            position:fixed; bottom:0; left:0; right:0; height:140px; 
-            background:rgba(0,0,0,0.92); display:flex; overflow-x:auto; padding:12px; gap:12px; 
-            z-index:100; scrollbar-width:none; 
+        .item {
+            position: absolute;
+            cursor: move;
+            user-select: none;
+            touch-action: none;
+            z-index: 10;
+            transition: transform 0.1s;
         }
-        #inventory::-webkit-scrollbar { display:none; }
-        
-        .inv-item { 
-            width:80px; height:80px; background-size:contain; background-repeat:no-repeat; 
-            background-position:center; flex-shrink:0; border:2px solid #777; 
-            border-radius:12px; cursor:grab; box-shadow:0 4px 8px rgba(0,0,0,0.5);
+        .item:active {
+            transform: scale(1.1);
+            z-index: 20;
         }
-        
-        .stars-shop, #save-btn { 
-            position:fixed; top:12px; padding:10px 18px; border-radius:8px; z-index:200; font-weight:bold;
+        #inventory {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 120px;
+            background: rgba(0,0,0,0.8);
+            display: flex;
+            overflow-x: auto;
+            padding: 10px;
+            gap: 10px;
+            z-index: 100;
         }
-        .stars-shop { left:12px; background:#ffd700; color:black; }
-        #save-btn { right:12px; background:#28a745; color:white; }
-        
-        .status { 
-            position:fixed; bottom:155px; left:50%; transform:translateX(-50%);
-            background:rgba(0,255,0,0.8); color:black; padding:6px 14px; border-radius:20px;
-            font-size:14px; z-index:150; opacity:0; transition:opacity 0.4s;
+        .inv-item {
+            width: 80px;
+            height: 80px;
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+            flex-shrink: 0;
+            border: 2px solid #666;
+            border-radius: 8px;
+            cursor: grab;
+        }
+        #save-btn {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            padding: 10px 20px;
+            background: #28a745;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            z-index: 200;
+        }
+        .stars-shop {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            background: #ffd700;
+            color: black;
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
         }
     </style>
 </head>
 <body>
     <div id="room"></div>
-    <div class="stars-shop" onclick="openShop()">⭐ Магазин</div>
+    
     <button id="save-btn">💾 Сохранить</button>
-    <div id="inventory"></div>
-    <div id="status" class="status"></div>
+    <div class="stars-shop" onclick="openStarsShop()">⭐ Магазин за Stars</div>
+
+    <div id="inventory">
+        <!-- Items populated by JS -->
+    </div>
 
     <script>
         const tg = window.Telegram.WebApp;
         tg.expand();
         tg.ready();
 
-        let userId = tg.initDataUnsafe?.user?.id || 'demo';
+        let userId = tg.initDataUnsafe.user?.id;
         let placedItems = [];
         let inventory = [];
 
-        // ===================== ЗАГРУЗКА ИНВЕНТАРЯ =====================
-        function loadState() {
-            const startParam = tg.initDataUnsafe?.start_param;
-            
-            // 1. Пробуем загрузить данные от бота
-            if (startParam) {
-                try {
-                    const decoded = atob(startParam + "==".slice((startParam.length % 4) || 4)); // исправление base64
-                    const botInventory = JSON.parse(decoded);
-                    console.log("📥 Получен инвентарь от бота:", botInventory);
-                    
-                    // Добавляем новые предметы от бота
-                    const existingIds = new Set(inventory.map(i => i.id));
-                    botInventory.forEach(item => {
-                        if (!existingIds.has(item.id)) {
-                            inventory.push(item);
-                        }
-                    });
-                } catch(e) {
-                    console.error("Ошибка чтения start_param:", e);
-                }
-            }
+        // Example items (replace with real PNG URLs)
+        const allItems = [
+            {id: 1, name: "Лампа", url: "https://via.placeholder.com/80/ffff00/000?text=Лампа"},
+            {id: 2, name: "Кресло", url: "https://via.placeholder.com/80/00ff00/000?text=Кресло"},
+            {id: 3, name: "Картина", url: "https://via.placeholder.com/80/0000ff/fff?text=Картина"},
+            // Add more PNG URLs here
+        ];
 
-            // 2. Загружаем сохранённые данные из localStorage
-            const savedPlaced = localStorage.getItem(`placed_${userId}`);
-            const savedInv = localStorage.getItem(`inv_${userId}`);
-
-            if (savedPlaced) placedItems = JSON.parse(savedPlaced);
-            if (savedInv) {
-                const localInv = JSON.parse(savedInv);
-                // Объединяем (приоритет у новых от бота)
-                const existingIds = new Set(inventory.map(i => i.id));
-                localInv.forEach(item => {
-                    if (!existingIds.has(item.id)) inventory.push(item);
-                });
-            }
-
-            // Если совсем ничего нет — дефолт
-            if (inventory.length === 0) {
-                inventory = [
-                    {id:1, name:"Лампа", url:"https://s.fotora.ru/a836671c3744e5fe.png"}
-                ];
-            }
-
-            renderPlaced();
-            renderInventory();
+        async function loadState() {
+            if (!userId) return;
+            try {
+                const res = await fetch(`/api/load?user_id=${userId}`);
+                const data = await res.json();
+                placedItems = data.placed || [];
+                inventory = data.inventory || allItems.slice(0, 3); // example
+                renderPlaced();
+                renderInventory();
+            } catch(e) {}
         }
 
-        function saveState() {
-            localStorage.setItem(`placed_${userId}`, JSON.stringify(placedItems));
-            localStorage.setItem(`inv_${userId}`, JSON.stringify(inventory));
-            showStatus("✅ Сохранено");
-        }
-
-        function showStatus(text) {
-            const el = document.getElementById('status');
-            el.textContent = text;
-            el.style.opacity = '1';
-            setTimeout(() => el.style.opacity = '0', 1800);
-        }
-
-        // ===================== РЕНДЕР =====================
         function renderPlaced() {
             const room = document.getElementById('room');
             room.innerHTML = '';
@@ -129,82 +127,105 @@
                 const el = document.createElement('img');
                 el.src = item.url;
                 el.className = 'item';
-                el.style.left = `${item.x || 150}px`;
-                el.style.top = `${item.y || 150}px`;
+                el.style.left = `${item.x}px`;
+                el.style.top = `${item.y}px`;
+                el.style.width = '80px';
+                el.draggable = false;
                 makeDraggable(el, index);
                 room.appendChild(el);
             });
         }
 
         function renderInventory() {
-            const invEl = document.getElementById('inventory');
-            invEl.innerHTML = '';
+            const inv = document.getElementById('inventory');
+            inv.innerHTML = '';
             inventory.forEach(item => {
                 const el = document.createElement('div');
                 el.className = 'inv-item';
                 el.style.backgroundImage = `url(${item.url})`;
                 el.draggable = true;
-                el.ondragstart = e => e.dataTransfer.setData('text/plain', JSON.stringify(item));
-                invEl.appendChild(el);
+                el.ondragstart = (e) => {
+                    e.dataTransfer.setData('text/plain', JSON.stringify(item));
+                };
+                inv.appendChild(el);
             });
         }
 
         function makeDraggable(el, index) {
-            let pos1=0, pos2=0, pos3=0, pos4=0;
+            let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
             
-            el.onpointerdown = e => {
-                e.preventDefault();
-                pos3 = e.clientX; pos4 = e.clientY;
-                document.onpointermove = drag;
-                document.onpointerup = closeDrag;
-            };
+            el.onpointerdown = dragMouseDown;
 
-            function drag(e) {
+            function dragMouseDown(e) {
+                e.preventDefault();
+                pos3 = e.clientX;
+                pos4 = e.clientY;
+                document.onpointerup = closeDragElement;
+                document.onpointermove = elementDrag;
+            }
+
+            function elementDrag(e) {
                 e.preventDefault();
                 pos1 = pos3 - e.clientX;
                 pos2 = pos4 - e.clientY;
                 pos3 = e.clientX;
                 pos4 = e.clientY;
-                el.style.left = (el.offsetLeft - pos1) + "px";
                 el.style.top = (el.offsetTop - pos2) + "px";
+                el.style.left = (el.offsetLeft - pos1) + "px";
             }
 
-            function closeDrag() {
-                document.onpointermove = null;
+            function closeDragElement() {
                 document.onpointerup = null;
+                document.onpointermove = null;
+                // Update position
                 placedItems[index].x = parseFloat(el.style.left);
                 placedItems[index].y = parseFloat(el.style.top);
-                saveState();
             }
         }
 
-        // Drop
+        // Drop on room
         const room = document.getElementById('room');
-        room.ondragover = e => e.preventDefault();
-        room.ondrop = e => {
+        room.ondragover = (e) => e.preventDefault();
+        room.ondrop = (e) => {
             e.preventDefault();
-            try {
-                const data = JSON.parse(e.dataTransfer.getData('text/plain'));
-                const rect = room.getBoundingClientRect();
-                const x = e.clientX - rect.left - 40;
-                const y = e.clientY - rect.top - 40;
+            const itemData = JSON.parse(e.dataTransfer.getData('text/plain'));
+            const rect = room.getBoundingClientRect();
+            const x = e.clientX - rect.left - 40;
+            const y = e.clientY - rect.top - 40;
 
-                placedItems.push({
-                    ...data,
-                    x: Math.max(0, Math.min(x, rect.width - 90)),
-                    y: Math.max(0, Math.min(y, rect.height - 130))
-                });
-                renderPlaced();
-                saveState();
-            } catch(err) {}
+            placedItems.push({
+                id: itemData.id,
+                url: itemData.url,
+                x: Math.max(0, x),
+                y: Math.max(0, y)
+            });
+            renderPlaced();
         };
 
-        function openShop() {
-            tg.openTelegramLink("https://t.me/ВАШ_БОТ?start=shop");
+        document.getElementById('save-btn').onclick = async () => {
+            if (!userId) return;
+            await fetch('/api/save', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    user_id: userId,
+                    placed: placedItems,
+                    inventory: inventory
+                })
+            });
+            tg.showPopup({message: 'Сохранено!'});
+        };
+
+        function openStarsShop() {
+            tg.openInvoice('stars_purchase_example'); // handled in bot
+            // Or show catalog and call createInvoice
         }
 
-        // Инициализация
+        // Init
         window.onload = loadState;
+
+        // Listen for theme changes etc.
+        tg.onEvent('themeChanged', () => {});
     </script>
 </body>
 </html>
