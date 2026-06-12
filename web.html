@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Обустройство комнаты</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        body { margin:0; padding:0; background:#111; color:white; font-family:sans-serif; overflow:hidden; }
+        #room { position:relative; width:100vw; height:100vh; background:url('https://s.fotora.ru/80033dcbc2bd9f18.png') center/cover no-repeat; overflow:hidden; }
+        .item { position:absolute; width:80px; height:auto; max-height:120px; object-fit:contain; cursor:move; user-select:none; z-index:10; }
+        .item:active { transform:scale(1.12); z-index:20; }
+        #inventory { position:fixed; bottom:0; left:0; right:0; height:130px; background:rgba(0,0,0,0.9); display:flex; overflow-x:auto; padding:12px; gap:12px; z-index:100; }
+        .inv-item { width:80px; height:80px; background-size:contain; background-repeat:no-repeat; background-position:center; flex-shrink:0; border:2px solid #777; border-radius:12px; cursor:grab; }
+        .stars-shop, #save-btn { position:fixed; top:12px; padding:10px 18px; border-radius:8px; z-index:200; font-weight:bold; }
+        .stars-shop { left:12px; background:#ffd700; color:black; }
+        #save-btn { right:12px; background:#28a745; color:white; }
+    </style>
+</head>
+<body>
+    <div id="room"></div>
+    <div class="stars-shop" onclick="openShop()">⭐ Магазин</div>
+    <button id="save-btn">💾 Сохранить</button>
+    <div id="inventory"></div>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.expand();
+        tg.ready();
+
+        let userId = tg.initDataUnsafe?.user?.id || 'demo';
+        let placedItems = [];
+        let inventory = [];
+
+        const defaultItems = [
+            {id:1, name:"Лампа", url:"https://s.fotora.ru/a836671c3744e5fe.png"},
+        ];
+
+        // ===================== ЗАГРУЗКА =====================
+        function loadState() {
+            // 1. Пробуем получить данные из startapp (от бота)
+            const startParam = tg.initDataUnsafe?.start_param;
+            let fromBot = [];
+
+            if (startParam) {
+                try {
+                    fromBot = JSON.parse(atob(startParam)); // декодируем base64
+                    console.log("Получен инвентарь от бота:", fromBot);
+                } catch(e) { console.error("Ошибка парсинга start_param"); }
+            }
+
+            // 2. Загружаем сохранённое локально
+            const savedPlaced = localStorage.getItem(`placed_${userId}`);
+            const savedInv = localStorage.getItem(`inv_${userId}`);
+
+            placedItems = savedPlaced ? JSON.parse(savedPlaced) : [];
+            inventory = savedInv ? JSON.parse(savedInv) : [...defaultItems];
+
+            // 3. Объединяем инвентарь от бота с локальным (добавляем новые предметы)
+            if (fromBot.length > 0) {
+                const existingIds = new Set(inventory.map(i => i.id));
+                fromBot.forEach(item => {
+                    if (!existingIds.has(item.id)) {
+                        inventory.push(item);
+                    }
+                });
+            }
+
+            renderPlaced();
+            renderInventory();
+            saveState(); // сохраняем обновлённый инвентарь
+        }
+
+        function saveState() {
+            localStorage.setItem(`placed_${userId}`, JSON.stringify(placedItems));
+            localStorage.setItem(`inv_${userId}`, JSON.stringify(inventory));
+        }
+
+        function renderPlaced() { /* тот же код, что был раньше */ 
+            const room = document.getElementById('room');
+            room.innerHTML = '';
+            placedItems.forEach((item, i) => {
+                const el = document.createElement('img');
+                el.src = item.url;
+                el.className = 'item';
+                el.style.left = (item.x || 100) + 'px';
+                el.style.top = (item.y || 100) + 'px';
+                makeDraggable(el, i);
+                room.appendChild(el);
+            });
+        }
+
+        function renderInventory() {
+            const invEl = document.getElementById('inventory');
+            invEl.innerHTML = '';
+            inventory.forEach(item => {
+                const el = document.createElement('div');
+                el.className = 'inv-item';
+                el.style.backgroundImage = `url(${item.url})`;
+                el.draggable = true;
+                el.ondragstart = e => e.dataTransfer.setData('text/plain', JSON.stringify(item));
+                invEl.appendChild(el);
+            });
+        }
+
+        function makeDraggable(el, index) { /* тот же код drag с автосейвом */ 
+            let pos1=0, pos2=0, pos3=0, pos4=0;
+            el.onpointerdown = e => {
+                e.preventDefault();
+                pos3 = e.clientX; pos4 = e.clientY;
+                document.onpointermove = drag;
+                document.onpointerup = () => {
+                    document.onpointermove = null;
+                    document.onpointerup = null;
+                    placedItems[index].x = parseFloat(el.style.left);
+                    placedItems[index].y = parseFloat(el.style.top);
+                    saveState();
+                };
+            };
+            function drag(e) {
+                e.preventDefault();
+                pos1 = pos3 - e.clientX; pos2 = pos4 - e.clientY;
+                pos3 = e.clientX; pos4 = e.clientY;
+                el.style.left = (el.offsetLeft - pos1) + "px";
+                el.style.top = (el.offsetTop - pos2) + "px";
+            }
+        }
+
+        // Drop + автосейв
+        const room = document.getElementById('room');
+        room.ondragover = e => e.preventDefault();
+        room.ondrop = e => {
+            e.preventDefault();
+            const data = JSON.parse(e.dataTransfer.getData('text/plain'));
+            const rect = room.getBoundingClientRect();
+            const x = e.clientX - rect.left - 40;
+            const y = e.clientY - rect.top - 40;
+
+            placedItems.push({
+                ...data,
+                x: Math.max(0, Math.min(x, rect.width-80)),
+                y: Math.max(0, Math.min(y, rect.height-120))
+            });
+            renderPlaced();
+            saveState();
+        };
+
+        function openShop() {
+            tg.openTelegramLink("https://t.me/ВАШ_БОТ?start=shop");
+        }
+
+        window.onload = loadState;
+    </script>
+</body>
+</html>
