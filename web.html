@@ -3,18 +3,45 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Обустройство комнаты</title>
+    <title>Обустройство комнаты отеля</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
-        body { margin:0; padding:0; background:#111; color:white; font-family:sans-serif; overflow:hidden; }
-        #room { position:relative; width:100vw; height:100vh; background:url('https://s.fotora.ru/80033dcbc2bd9f18.png') center/cover no-repeat; overflow:hidden; }
-        .item { position:absolute; width:80px; height:auto; max-height:120px; object-fit:contain; cursor:move; user-select:none; z-index:10; }
-        .item:active { transform:scale(1.12); z-index:20; }
-        #inventory { position:fixed; bottom:0; left:0; right:0; height:130px; background:rgba(0,0,0,0.9); display:flex; overflow-x:auto; padding:12px; gap:12px; z-index:100; }
-        .inv-item { width:80px; height:80px; background-size:contain; background-repeat:no-repeat; background-position:center; flex-shrink:0; border:2px solid #777; border-radius:12px; cursor:grab; }
-        .stars-shop, #save-btn { position:fixed; top:12px; padding:10px 18px; border-radius:8px; z-index:200; font-weight:bold; }
+        body { margin:0; padding:0; background:#111; color:white; font-family:sans-serif; overflow:hidden; touch-action:none; }
+        #room { 
+            position: relative; width:100vw; height:100vh; 
+            background: url('https://s.fotora.ru/80033dcbc2bd9f18.png') center/cover no-repeat; 
+            overflow: hidden; 
+        }
+        .item { 
+            position: absolute; width:80px; height:auto; max-height:120px; object-fit:contain; 
+            cursor: move; user-select:none; z-index:10; transition: transform 0.1s;
+        }
+        .item:active { transform: scale(1.12); z-index: 20; }
+        
+        #inventory { 
+            position:fixed; bottom:0; left:0; right:0; height:140px; 
+            background:rgba(0,0,0,0.92); display:flex; overflow-x:auto; padding:12px; gap:12px; 
+            z-index:100; scrollbar-width:none; 
+        }
+        #inventory::-webkit-scrollbar { display:none; }
+        
+        .inv-item { 
+            width:80px; height:80px; background-size:contain; background-repeat:no-repeat; 
+            background-position:center; flex-shrink:0; border:2px solid #777; 
+            border-radius:12px; cursor:grab; box-shadow:0 4px 8px rgba(0,0,0,0.5);
+        }
+        
+        .stars-shop, #save-btn { 
+            position:fixed; top:12px; padding:10px 18px; border-radius:8px; z-index:200; font-weight:bold;
+        }
         .stars-shop { left:12px; background:#ffd700; color:black; }
         #save-btn { right:12px; background:#28a745; color:white; }
+        
+        .status { 
+            position:fixed; bottom:155px; left:50%; transform:translateX(-50%);
+            background:rgba(0,255,0,0.8); color:black; padding:6px 14px; border-radius:20px;
+            font-size:14px; z-index:150; opacity:0; transition:opacity 0.4s;
+        }
     </style>
 </head>
 <body>
@@ -22,6 +49,7 @@
     <div class="stars-shop" onclick="openShop()">⭐ Магазин</div>
     <button id="save-btn">💾 Сохранить</button>
     <div id="inventory"></div>
+    <div id="status" class="status"></div>
 
     <script>
         const tg = window.Telegram.WebApp;
@@ -32,60 +60,78 @@
         let placedItems = [];
         let inventory = [];
 
-        const defaultItems = [
-            {id:1, name:"Лампа", url:"https://s.fotora.ru/a836671c3744e5fe.png"},
-        ];
-
-        // ===================== ЗАГРУЗКА =====================
+        // ===================== ЗАГРУЗКА ИНВЕНТАРЯ =====================
         function loadState() {
-            // 1. Пробуем получить данные из startapp (от бота)
             const startParam = tg.initDataUnsafe?.start_param;
-            let fromBot = [];
-
+            
+            // 1. Пробуем загрузить данные от бота
             if (startParam) {
                 try {
-                    fromBot = JSON.parse(atob(startParam)); // декодируем base64
-                    console.log("Получен инвентарь от бота:", fromBot);
-                } catch(e) { console.error("Ошибка парсинга start_param"); }
+                    const decoded = atob(startParam + "==".slice((startParam.length % 4) || 4)); // исправление base64
+                    const botInventory = JSON.parse(decoded);
+                    console.log("📥 Получен инвентарь от бота:", botInventory);
+                    
+                    // Добавляем новые предметы от бота
+                    const existingIds = new Set(inventory.map(i => i.id));
+                    botInventory.forEach(item => {
+                        if (!existingIds.has(item.id)) {
+                            inventory.push(item);
+                        }
+                    });
+                } catch(e) {
+                    console.error("Ошибка чтения start_param:", e);
+                }
             }
 
-            // 2. Загружаем сохранённое локально
+            // 2. Загружаем сохранённые данные из localStorage
             const savedPlaced = localStorage.getItem(`placed_${userId}`);
             const savedInv = localStorage.getItem(`inv_${userId}`);
 
-            placedItems = savedPlaced ? JSON.parse(savedPlaced) : [];
-            inventory = savedInv ? JSON.parse(savedInv) : [...defaultItems];
-
-            // 3. Объединяем инвентарь от бота с локальным (добавляем новые предметы)
-            if (fromBot.length > 0) {
+            if (savedPlaced) placedItems = JSON.parse(savedPlaced);
+            if (savedInv) {
+                const localInv = JSON.parse(savedInv);
+                // Объединяем (приоритет у новых от бота)
                 const existingIds = new Set(inventory.map(i => i.id));
-                fromBot.forEach(item => {
-                    if (!existingIds.has(item.id)) {
-                        inventory.push(item);
-                    }
+                localInv.forEach(item => {
+                    if (!existingIds.has(item.id)) inventory.push(item);
                 });
+            }
+
+            // Если совсем ничего нет — дефолт
+            if (inventory.length === 0) {
+                inventory = [
+                    {id:1, name:"Лампа", url:"https://s.fotora.ru/a836671c3744e5fe.png"}
+                ];
             }
 
             renderPlaced();
             renderInventory();
-            saveState(); // сохраняем обновлённый инвентарь
         }
 
         function saveState() {
             localStorage.setItem(`placed_${userId}`, JSON.stringify(placedItems));
             localStorage.setItem(`inv_${userId}`, JSON.stringify(inventory));
+            showStatus("✅ Сохранено");
         }
 
-        function renderPlaced() { /* тот же код, что был раньше */ 
+        function showStatus(text) {
+            const el = document.getElementById('status');
+            el.textContent = text;
+            el.style.opacity = '1';
+            setTimeout(() => el.style.opacity = '0', 1800);
+        }
+
+        // ===================== РЕНДЕР =====================
+        function renderPlaced() {
             const room = document.getElementById('room');
             room.innerHTML = '';
-            placedItems.forEach((item, i) => {
+            placedItems.forEach((item, index) => {
                 const el = document.createElement('img');
                 el.src = item.url;
                 el.className = 'item';
-                el.style.left = (item.x || 100) + 'px';
-                el.style.top = (item.y || 100) + 'px';
-                makeDraggable(el, i);
+                el.style.left = `${item.x || 150}px`;
+                el.style.top = `${item.y || 150}px`;
+                makeDraggable(el, index);
                 room.appendChild(el);
             });
         }
@@ -103,52 +149,61 @@
             });
         }
 
-        function makeDraggable(el, index) { /* тот же код drag с автосейвом */ 
+        function makeDraggable(el, index) {
             let pos1=0, pos2=0, pos3=0, pos4=0;
+            
             el.onpointerdown = e => {
                 e.preventDefault();
                 pos3 = e.clientX; pos4 = e.clientY;
                 document.onpointermove = drag;
-                document.onpointerup = () => {
-                    document.onpointermove = null;
-                    document.onpointerup = null;
-                    placedItems[index].x = parseFloat(el.style.left);
-                    placedItems[index].y = parseFloat(el.style.top);
-                    saveState();
-                };
+                document.onpointerup = closeDrag;
             };
+
             function drag(e) {
                 e.preventDefault();
-                pos1 = pos3 - e.clientX; pos2 = pos4 - e.clientY;
-                pos3 = e.clientX; pos4 = e.clientY;
+                pos1 = pos3 - e.clientX;
+                pos2 = pos4 - e.clientY;
+                pos3 = e.clientX;
+                pos4 = e.clientY;
                 el.style.left = (el.offsetLeft - pos1) + "px";
                 el.style.top = (el.offsetTop - pos2) + "px";
             }
+
+            function closeDrag() {
+                document.onpointermove = null;
+                document.onpointerup = null;
+                placedItems[index].x = parseFloat(el.style.left);
+                placedItems[index].y = parseFloat(el.style.top);
+                saveState();
+            }
         }
 
-        // Drop + автосейв
+        // Drop
         const room = document.getElementById('room');
         room.ondragover = e => e.preventDefault();
         room.ondrop = e => {
             e.preventDefault();
-            const data = JSON.parse(e.dataTransfer.getData('text/plain'));
-            const rect = room.getBoundingClientRect();
-            const x = e.clientX - rect.left - 40;
-            const y = e.clientY - rect.top - 40;
+            try {
+                const data = JSON.parse(e.dataTransfer.getData('text/plain'));
+                const rect = room.getBoundingClientRect();
+                const x = e.clientX - rect.left - 40;
+                const y = e.clientY - rect.top - 40;
 
-            placedItems.push({
-                ...data,
-                x: Math.max(0, Math.min(x, rect.width-80)),
-                y: Math.max(0, Math.min(y, rect.height-120))
-            });
-            renderPlaced();
-            saveState();
+                placedItems.push({
+                    ...data,
+                    x: Math.max(0, Math.min(x, rect.width - 90)),
+                    y: Math.max(0, Math.min(y, rect.height - 130))
+                });
+                renderPlaced();
+                saveState();
+            } catch(err) {}
         };
 
         function openShop() {
             tg.openTelegramLink("https://t.me/ВАШ_БОТ?start=shop");
         }
 
+        // Инициализация
         window.onload = loadState;
     </script>
 </body>
