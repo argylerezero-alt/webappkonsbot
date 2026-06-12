@@ -3,136 +3,128 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Обустройство комнаты отеля</title>
+    <title>Обустройство комнаты</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
+        * { margin:0; padding:0; box-sizing:border-box; }
         body {
-            margin: 0;
-            padding: 0;
-            background: #111;
+            background: #0a0a0a;
             color: white;
-            font-family: sans-serif;
+            font-family: Arial, sans-serif;
             overflow: hidden;
-            touch-action: none;
+            height: 100vh;
         }
         #room {
             position: relative;
             width: 100vw;
-            height: 100vh;
-            background: url('https://via.placeholder.com/800x600/333/fff?text=Hotel+Room+PNG') center/cover no-repeat;
+            height: calc(100vh - 140px);
+            background: url('https://i.imgur.com/8vJ2Z3k.jpg') center/cover no-repeat; /* ← замени на свою комнату */
             overflow: hidden;
         }
         .item {
             position: absolute;
+            width: 90px;
             cursor: move;
             user-select: none;
             touch-action: none;
-            z-index: 10;
-            transition: transform 0.1s;
-        }
-        .item:active {
-            transform: scale(1.1);
-            z-index: 20;
         }
         #inventory {
             position: fixed;
             bottom: 0;
             left: 0;
             right: 0;
-            height: 120px;
-            background: rgba(0,0,0,0.8);
+            height: 130px;
+            background: rgba(0,0,0,0.85);
             display: flex;
             overflow-x: auto;
             padding: 10px;
-            gap: 10px;
+            gap: 12px;
             z-index: 100;
         }
         .inv-item {
-            width: 80px;
-            height: 80px;
+            width: 85px;
+            height: 85px;
             background-size: contain;
             background-repeat: no-repeat;
             background-position: center;
+            border: 3px solid #444;
+            border-radius: 12px;
             flex-shrink: 0;
-            border: 2px solid #666;
-            border-radius: 8px;
             cursor: grab;
         }
-        #save-btn {
+        .top-bar {
             position: fixed;
-            top: 10px;
-            right: 10px;
-            padding: 10px 20px;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 60px;
+            background: rgba(0,0,0,0.7);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 15px;
+            z-index: 200;
+        }
+        button {
+            padding: 10px 18px;
             background: #28a745;
             color: white;
             border: none;
             border-radius: 8px;
-            z-index: 200;
-        }
-        .stars-shop {
-            position: fixed;
-            top: 10px;
-            left: 10px;
-            background: #ffd700;
-            color: black;
-            padding: 8px 16px;
-            border-radius: 8px;
-            cursor: pointer;
+            font-size: 16px;
         }
     </style>
 </head>
 <body>
-    <div id="room"></div>
-    
-    <button id="save-btn">💾 Сохранить</button>
-    <div class="stars-shop" onclick="openStarsShop()">⭐ Магазин за Stars</div>
-
-    <div id="inventory">
-        <!-- Items populated by JS -->
+    <div class="top-bar">
+        <div onclick="openStarsShop()" style="cursor:pointer; color:#ffd700; font-weight:bold;">⭐ Магазин Stars</div>
+        <button id="save-btn">💾 Сохранить комнату</button>
     </div>
+
+    <div id="room"></div>
+
+    <div id="inventory"></div>
 
     <script>
         const tg = window.Telegram.WebApp;
         tg.expand();
         tg.ready();
 
-        let userId = tg.initDataUnsafe.user?.id;
+        const userId = tg.initDataUnsafe.user?.id;
         let placedItems = [];
         let inventory = [];
 
-        // Example items (replace with real PNG URLs)
-        const allItems = [
-            {id: 1, name: "Лампа", url: "https://via.placeholder.com/80/ffff00/000?text=Лампа"},
-            {id: 2, name: "Кресло", url: "https://via.placeholder.com/80/00ff00/000?text=Кресло"},
-            {id: 3, name: "Картина", url: "https://via.placeholder.com/80/0000ff/fff?text=Картина"},
-            // Add more PNG URLs here
+        const allItems = [ // Добавляй сюда свои PNG
+            {id:1, name:"Лампа", url:"https://i.imgur.com/abc123.png"},
+            {id:2, name:"Кресло", url:"https://i.imgur.com/def456.png"},
+            {id:3, name:"Картина", url:"https://i.imgur.com/ghi789.png"},
+            {id:4, name:"Цветы", url:"https://i.imgur.com/jkl012.png"},
+            // ... добавляй сколько угодно
         ];
 
-        async function loadState() {
+        async function loadRoom() {
             if (!userId) return;
             try {
                 const res = await fetch(`/api/load?user_id=${userId}`);
                 const data = await res.json();
                 placedItems = data.placed || [];
-                inventory = data.inventory || allItems.slice(0, 3); // example
-                renderPlaced();
+                inventory = data.inventory || allItems.slice(0, 5);
+                renderRoom();
                 renderInventory();
-            } catch(e) {}
+            } catch(e) { console.error(e); }
         }
 
-        function renderPlaced() {
+        function renderRoom() {
             const room = document.getElementById('room');
             room.innerHTML = '';
-            placedItems.forEach((item, index) => {
-                const el = document.createElement('img');
-                el.src = item.url;
-                el.className = 'item';
-                el.style.left = `${item.x}px`;
-                el.style.top = `${item.y}px`;
-                el.style.width = '80px';
-                el.draggable = false;
-                makeDraggable(el, index);
-                room.appendChild(el);
+            placedItems.forEach((item, i) => {
+                const img = document.createElement('img');
+                img.src = item.url;
+                img.className = 'item';
+                img.style.left = item.x + 'px';
+                img.style.top = item.y + 'px';
+                makeDraggable(img, i);
+                room.appendChild(img);
             });
         }
 
@@ -140,92 +132,63 @@
             const inv = document.getElementById('inventory');
             inv.innerHTML = '';
             inventory.forEach(item => {
-                const el = document.createElement('div');
-                el.className = 'inv-item';
-                el.style.backgroundImage = `url(${item.url})`;
-                el.draggable = true;
-                el.ondragstart = (e) => {
-                    e.dataTransfer.setData('text/plain', JSON.stringify(item));
-                };
-                inv.appendChild(el);
+                const div = document.createElement('div');
+                div.className = 'inv-item';
+                div.style.backgroundImage = `url(${item.url})`;
+                div.draggable = true;
+                div.ondragstart = e => e.dataTransfer.setData('text/plain', JSON.stringify(item));
+                inv.appendChild(div);
             });
         }
 
         function makeDraggable(el, index) {
-            let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
-            
-            el.onpointerdown = dragMouseDown;
+            let offsetX, offsetY;
+            el.onpointerdown = e => {
+                offsetX = e.clientX - el.getBoundingClientRect().left;
+                offsetY = e.clientY - el.getBoundingClientRect().top;
+                document.onpointermove = drag;
+                document.onpointerup = () => document.onpointermove = null;
+            };
 
-            function dragMouseDown(e) {
-                e.preventDefault();
-                pos3 = e.clientX;
-                pos4 = e.clientY;
-                document.onpointerup = closeDragElement;
-                document.onpointermove = elementDrag;
-            }
-
-            function elementDrag(e) {
-                e.preventDefault();
-                pos1 = pos3 - e.clientX;
-                pos2 = pos4 - e.clientY;
-                pos3 = e.clientX;
-                pos4 = e.clientY;
-                el.style.top = (el.offsetTop - pos2) + "px";
-                el.style.left = (el.offsetLeft - pos1) + "px";
-            }
-
-            function closeDragElement() {
-                document.onpointerup = null;
-                document.onpointermove = null;
-                // Update position
-                placedItems[index].x = parseFloat(el.style.left);
-                placedItems[index].y = parseFloat(el.style.top);
+            function drag(e) {
+                let x = e.clientX - offsetX;
+                let y = e.clientY - offsetY;
+                x = Math.max(0, Math.min(x, window.innerWidth - 90));
+                y = Math.max(0, Math.min(y, window.innerHeight - 200));
+                el.style.left = x + 'px';
+                el.style.top = y + 'px';
+                placedItems[index].x = x;
+                placedItems[index].y = y;
             }
         }
 
-        // Drop on room
         const room = document.getElementById('room');
-        room.ondragover = (e) => e.preventDefault();
-        room.ondrop = (e) => {
+        room.ondragover = e => e.preventDefault();
+        room.ondrop = e => {
             e.preventDefault();
-            const itemData = JSON.parse(e.dataTransfer.getData('text/plain'));
+            const item = JSON.parse(e.dataTransfer.getData('text/plain'));
             const rect = room.getBoundingClientRect();
-            const x = e.clientX - rect.left - 40;
-            const y = e.clientY - rect.top - 40;
+            const x = e.clientX - rect.left - 45;
+            const y = e.clientY - rect.top - 45;
 
-            placedItems.push({
-                id: itemData.id,
-                url: itemData.url,
-                x: Math.max(0, x),
-                y: Math.max(0, y)
-            });
-            renderPlaced();
+            placedItems.push({id: item.id, url: item.url, x: Math.max(0,x), y: Math.max(0,y)});
+            renderRoom();
         };
 
         document.getElementById('save-btn').onclick = async () => {
-            if (!userId) return;
             await fetch('/api/save', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({
-                    user_id: userId,
-                    placed: placedItems,
-                    inventory: inventory
-                })
+                body: JSON.stringify({user_id: userId, placed: placedItems, inventory: inventory})
             });
-            tg.showPopup({message: 'Сохранено!'});
+            tg.showPopup({message: 'Комната сохранена ✓'});
         };
 
         function openStarsShop() {
-            tg.openInvoice('stars_purchase_example'); // handled in bot
-            // Or show catalog and call createInvoice
+            tg.openInvoice('stars_item'); // будет обрабатываться в боте
         }
 
-        // Init
-        window.onload = loadState;
-
-        // Listen for theme changes etc.
-        tg.onEvent('themeChanged', () => {});
+        window.onload = loadRoom;
     </script>
 </body>
 </html>
